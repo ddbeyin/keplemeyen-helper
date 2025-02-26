@@ -1,0 +1,172 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  QT_VERSION: 6.8.2
+  CMAKE_VERSION: 3.19.8
+
+jobs:
+  build:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {
+            name: "Windows",
+            os: windows-latest,
+            build_type: "Release",
+            cc: "gcc", cxx: "g++",
+            archiver: "7z a",
+            generators: "MinGW Makefiles",
+            qt_arch: "win64_mingw",
+            qt_host: "windows",
+            package_name: "KeplemeyenHelper-Windows",
+          }
+          - {
+            name: "Ubuntu",
+            os: ubuntu-latest,
+            build_type: "Release",
+            cc: "gcc", cxx: "g++",
+            archiver: "tar czf",
+            generators: "Unix Makefiles",
+            qt_arch: "gcc_64",
+            qt_host: "linux",
+            package_name: "KeplemeyenHelper-Linux",
+          }
+          - {
+            name: "macOS",
+            os: macos-latest,
+            build_type: "Release",
+            cc: "clang", cxx: "clang++",
+            archiver: "tar czf",
+            generators: "Xcode",
+            qt_arch: "clang_64",
+            qt_host: "mac",
+            package_name: "KeplemeyenHelper-macOS",
+          }
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.config.qt_host }}
+          target: desktop
+          arch: ${{ matrix.config.qt_arch }}
+          install-deps: true
+          cache: true
+
+      - name: Setup Environment
+        shell: bash
+        run: |
+          echo "CC=${{ matrix.config.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.config.cxx }}" >> $GITHUB_ENV
+          # Set Qt6_DIR environment variable
+          if [ "${{ matrix.config.os }}" == "windows-latest" ]; then
+            QT_DIR=${Qt6_DIR//\//\\}
+            echo "Qt6_DIR=$QT_DIR" >> $GITHUB_ENV
+          else
+            echo "Qt6_DIR=$Qt6_DIR" >> $GITHUB_ENV
+          fi
+          
+      - name: Install Dependencies (Linux)
+        if: matrix.config.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            doxygen \
+            graphviz \
+            libgl1-mesa-dev \
+            libxkbcommon-x11-0 \
+            libfontconfig
+
+      - name: Install Dependencies (macOS)
+        if: matrix.config.os == 'macos-latest'
+        run: |
+          brew install doxygen
+          brew install graphviz
+
+      - name: Install Dependencies (Windows)
+        if: matrix.config.os == 'windows-latest'
+        run: |
+          choco install -y doxygen.install
+          choco install -y graphviz
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -G "${{ matrix.config.generators }}" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_PREFIX_PATH=$Qt6_DIR
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config ${{ matrix.config.build_type }}
+
+      - name: Generate Documentation
+        shell: bash
+        run: |
+          cmake --build build --target docs
+        continue-on-error: true
+
+      - name: Install
+        shell: bash
+        run: |
+          cmake --build build --target install --config ${{ matrix.config.build_type }}
+
+      - name: Package with CPack
+        shell: bash
+        working-directory: ./build
+        run: |
+          cpack -G ZIP
+
+      - name: Generate Hash Files
+        shell: bash
+        run: |
+          python generate_hashes.py build
+
+      - name: Verify Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.config.os }}" == "windows-latest" ]; then
+            python verify.py
+          else
+            ./verify.sh
+          fi
+        continue-on-error: true
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.config.package_name }}
+          path: |
+            build/*.zip
+            build/bin/
+            build/SHA256SUMS
+            build/manifest.json

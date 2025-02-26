@@ -1,0 +1,26 @@
+# This file defines the code owners for this repository
+# Code owners are automatically requested for review when someone opens a PR
+# that modifies code they own
+
+# Default owners for everything in the repo
+* @ddbeyin
+
+# Build system
+CMakeLists.txt @ddbeyin
+*.cmake @ddbeyin
+*.cmake.in @ddbeyin
+
+# Core application code
+*.cpp @ddbeyin
+*.h @ddbeyin
+
+# Qt UI files
+*.ui @ddbeyin
+
+# Documentation
+*.md @ddbeyin
+
+# Build and verification scripts
+build_and_hash.bat @ddbeyin
+generate_hashes.py @ddbeyin
+verify.bat @ddbeyin

@@ -1,0 +1,287 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.2.1)'
+        required: true
+        default: 'v0.2.1'
+
+env:
+  QT_VERSION: 6.8.2
+  CMAKE_VERSION: 3.19.8
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+          echo "Using version: $VERSION"
+
+      - name: Extract Changelog
+        id: extract_changelog
+        run: |
+          # Extract the current version section from CHANGELOG.md
+          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION_NUM="${VERSION#v}" # Remove 'v' prefix
+          echo "Looking for version $VERSION_NUM in changelog"
+          
+          # Parse changelog to extract the latest release notes
+          RELEASE_NOTES=$(awk -v ver="$VERSION_NUM" '
+          BEGIN { found=0; }
+          /^## \[.+\]/ {
+            if (found) { exit }
+            if ($0 ~ "\\[" ver "\\]") { found=1; next }
+          }
+          found { print }
+          ' CHANGELOG.md)
+          
+          # Make the release notes compatible with GitHub Actions
+          RELEASE_NOTES="${RELEASE_NOTES//'%'/'%25'}"
+          RELEASE_NOTES="${RELEASE_NOTES//$'\n'/'%0A'}"
+          RELEASE_NOTES="${RELEASE_NOTES//$'\r'/'%0D'}"
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          release_name: Keplemeyen Helper ${{ steps.get_version.outputs.version }}
+          body: |
+            ${{ steps.extract_changelog.outputs.release_notes }}
+            
+            ## Downloads
+            - Windows: [KeplemeyenHelper-Windows.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/KeplemeyenHelper-Windows.zip)
+            - Linux: [KeplemeyenHelper-Linux.deb](https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/KeplemeyenHelper-Linux.deb)
+            - macOS: [KeplemeyenHelper-macOS.dmg](https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/KeplemeyenHelper-macOS.dmg)
+            
+            ## Verification
+            SHA256 checksums are provided in the [SHA256SUMS](https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/SHA256SUMS) file.
+            
+            ### Verify the download:
+            ```bash
+            # Windows (PowerShell)
+            Get-FileHash KeplemeyenHelper-Windows.zip -Algorithm SHA256 | Format-List
+
+            # Linux/macOS
+            shasum -a 256 -c SHA256SUMS
+            ```
+          draft: false
+          prerelease: false
+
+  build:
+    name: Build ${{ matrix.config.name }}
+    needs: create-release
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {
+            name: "Windows",
+            os: windows-latest,
+            build_type: "Release",
+            cc: "gcc", cxx: "g++",
+            generators: "MinGW Makefiles",
+            qt_arch: "win64_mingw",
+            qt_host: "windows",
+            package_format: "ZIP",
+            package_ext: "zip",
+            package_name: "KeplemeyenHelper-Windows.zip",
+          }
+          - {
+            name: "Ubuntu",
+            os: ubuntu-latest,
+            build_type: "Release",
+            cc: "gcc", cxx: "g++",
+            generators: "Unix Makefiles",
+            qt_arch: "gcc_64",
+            qt_host: "linux",
+            package_format: "DEB",
+            package_ext: "deb",
+            package_name: "KeplemeyenHelper-Linux.deb",
+          }
+          - {
+            name: "macOS",
+            os: macos-latest,
+            build_type: "Release",
+            cc: "clang", cxx: "clang++",
+            generators: "Xcode",
+            qt_arch: "clang_64",
+            qt_host: "mac",
+            package_format: "DragNDrop",
+            package_ext: "dmg",
+            package_name: "KeplemeyenHelper-macOS.dmg",
+          }
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install CMake
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.config.qt_host }}
+          target: desktop
+          arch: ${{ matrix.config.qt_arch }}
+          install-deps: true
+          cache: true
+
+      - name: Setup Environment
+        shell: bash
+        run: |
+          echo "CC=${{ matrix.config.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.config.cxx }}" >> $GITHUB_ENV
+          # Set Qt6_DIR environment variable
+          if [ "${{ matrix.config.os }}" == "windows-latest" ]; then
+            QT_DIR=${Qt6_DIR//\//\\}
+            echo "Qt6_DIR=$QT_DIR" >> $GITHUB_ENV
+          else
+            echo "Qt6_DIR=$Qt6_DIR" >> $GITHUB_ENV
+          fi
+
+      - name: Install Dependencies (Linux)
+        if: matrix.config.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            libxkbcommon-x11-0 \
+            libfontconfig
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -G "${{ matrix.config.generators }}" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} \
+            -DCMAKE_INSTALL_PREFIX=install \
+            -DCMAKE_PREFIX_PATH=$Qt6_DIR
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config ${{ matrix.config.build_type }}
+
+      - name: Package with CPack
+        shell: bash
+        working-directory: ./build
+        run: |
+          cpack -G ${{ matrix.config.package_format }}
+          
+          # Find the actual package file - CPack might use version in filename
+          if [ "${{ matrix.config.os }}" == "windows-latest" ]; then
+            PACKAGE_FILE=$(ls *.zip)
+            cp "$PACKAGE_FILE" "${{ matrix.config.package_name }}"
+          elif [ "${{ matrix.config.os }}" == "ubuntu-latest" ]; then
+            PACKAGE_FILE=$(ls *.deb)
+            cp "$PACKAGE_FILE" "${{ matrix.config.package_name }}"
+          elif [ "${{ matrix.config.os }}" == "macos-latest" ]; then
+            PACKAGE_FILE=$(ls *.dmg)
+            cp "$PACKAGE_FILE" "${{ matrix.config.package_name }}"
+          fi
+          
+          echo "Package file created: $PACKAGE_FILE → ${{ matrix.config.package_name }}"
+
+      - name: Generate Hash Files
+        shell: bash
+        run: |
+          python generate_hashes.py build
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./build/${{ matrix.config.package_name }}
+          asset_name: ${{ matrix.config.package_name }}
+          asset_content_type: application/octet-stream
+
+  upload-verification:
+    name: Upload Verification Files
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Merge verification files
+        run: |
+          mkdir -p verification
+          
+          # Copy SHA256SUMS files from all platforms
+          find artifacts -name "SHA256SUMS" -exec cat {} >> verification/SHA256SUMS \;
+          
+          # Refactor the format to match standard
+          # Remove duplicate headers and format consistently
+          awk '!seen[$0]++' verification/SHA256SUMS > verification/SHA256SUMS.tmp
+          mv verification/SHA256SUMS.tmp verification/SHA256SUMS
+          
+          # Save the manifest.json from the latest build (any platform will do)
+          cp $(find artifacts -name "manifest.json" | head -n 1) verification/manifest.json
+
+      - name: Upload SHA256SUMS
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./verification/SHA256SUMS
+          asset_name: SHA256SUMS
+          asset_content_type: text/plain
+
+      - name: Upload manifest.json
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./verification/manifest.json
+          asset_name: manifest.json
+          asset_content_type: application/json
