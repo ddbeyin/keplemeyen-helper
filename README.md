@@ -1,4 +1,8 @@
-# Keplemeyen Helper
+<p align="center">
+  <img src="assets/app_icon.png" alt="Keplemeyen Helper Logo" width="128" height="128">
+</p>
+
+<h1 align="center">Keplemeyen Helper</h1>
 
 A modern C++ application designed to assist game support agents in analyzing player logs and providing efficient support responses. Originally developed in Python, this program has been completely rewritten in C++ to provide better flexibility and performance.
 
