@@ -1,0 +1,28 @@
+# top-most EditorConfig file
+root = true
+
+# All files
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+trim_trailing_whitespace = true
+
+# C++ files
+[*.{cpp,h,hpp}]
+indent_style = space
+indent_size = 4
+
+# Qt UI files
+[*.ui]
+indent_style = space
+indent_size = 2
+
+# CMake files
+[CMakeLists.txt]
+indent_style = space
+indent_size = 4
+
+# Markdown files
+[*.md]
+trim_trailing_whitespace = false

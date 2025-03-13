@@ -1,0 +1,39 @@
+# This file defines the code owners for this repository
+# Code owners are automatically requested for review when someone opens a PR
+# that modifies code they own
+
+# Default owners for everything in the repo
+* @ddbeyin
+
+# Build system
+CMakeLists.txt @ddbeyin
+*.cmake @ddbeyin
+*.cmake.in @ddbeyin
+version.h @ddbeyin
+version.h.in @ddbeyin
+
+# Core application code
+src/*.cpp @ddbeyin
+src/*.h @ddbeyin
+
+# Qt UI files
+src/*.ui @ddbeyin
+src/*.qrc @ddbeyin
+src/*.rc @ddbeyin
+src/*.ico @ddbeyin
+
+# Documentation
+*.md @ddbeyin
+LICENSE @ddbeyin
+
+# Configuration files
+.editorconfig @ddbeyin
+.gitattributes @ddbeyin
+.gitignore @ddbeyin
+
+# Build and deployment scripts
+build_installer.bat @ddbeyin
+
+# GitHub templates
+.github/CODEOWNERS @ddbeyin
+.github/issue_template/*.md @ddbeyin

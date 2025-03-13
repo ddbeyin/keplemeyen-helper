@@ -1,0 +1,13 @@
+// Copyright (c) 2025 ddbeyin
+// MIT License - See LICENSE file for details
+
+#ifndef VERSION_H
+#define VERSION_H
+
+#define APP_VERSION_MAJOR @VERSION_MAJOR@
+#define APP_VERSION_MINOR @VERSION_MINOR@
+#define APP_VERSION_PATCH @VERSION_PATCH@
+
+#define APP_VERSION_STR "@PROJECT_VERSION@"
+
+#endif // VERSION_H

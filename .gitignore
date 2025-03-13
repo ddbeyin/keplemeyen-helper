@@ -1,0 +1,30 @@
+# Build directories
+build/
+debug/
+release/
+
+# Qt specific
+*.user
+*.autosave
+CMakeLists.txt.user
+
+# IDE specific
+.vs/
+.idea/
+*.sln
+
+# System specific
+.DS_Store
+Thumbs.db
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.so
+
+# Temporary files
+*.swp
+*~

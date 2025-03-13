@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <!-- Legal documents -->
+        <file>LICENSE</file>
+        
+        <!-- Application icons -->
+        <file>src/app_icon.ico</file>
+    </qresource>
+</RCC>
